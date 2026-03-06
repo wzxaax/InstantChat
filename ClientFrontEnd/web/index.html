@@ -1,0 +1,237 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>在线聊天室</title>
+    <script>
+        let socket;
+        let username = "";
+        let connected = false;
+
+        function connect() {
+            username = document.getElementById("username").value;
+            if (!username) {
+                alert("请输入用户名！");
+                return;
+            }
+
+            socket = new WebSocket(`ws://localhost:8080/ws?username=${encodeURIComponent(username)}`);
+
+            socket.onclose = () => {
+                document.getElementById("loginDiv").style.display = "inline";
+                document.getElementById("userInfo").style.display = "none";
+                document.getElementById("status").innerText = "❌ 断开与服务器的连接";
+                connected = false;
+            };
+
+            socket.onmessage = (event) => {
+                const data = event.data.trim();
+                try {
+                    const parsed = JSON.parse(data);
+                    // console.log(parsed.type)
+
+                    switch (parsed.type) {
+                        case "connectSuccess":
+                            document.getElementById("status").innerText = "✅ 已连接到服务器";
+                            document.getElementById("loginDiv").style.display = "none";
+                            document.getElementById("userInfo").style.display = "inline";
+                            document.getElementById("displayUsername").innerText = username;
+                            connected = true;
+                            return;
+                        case "connectFail":
+                            document.getElementById("status").innerText = "❌ 无法连接到服务器";
+                            connected = false;
+                            return;
+                        case "userList":
+                            // 渲染用户列表
+                            const listDiv = document.getElementById("userList");
+                            if (parsed.users.length === 0) {
+                                listDiv.innerHTML = "<div class='user-item text-gray-500'>暂无在线用户</div>";
+                            } else {
+                                listDiv.innerHTML = parsed.users
+                                    .map(u => `<div class='user-item'>${u}</div>`)
+                                    .join("");
+                            }
+                            return;
+                        case "userName_alreadyUsed":
+                            console.log("userName_alreadyUsed")
+                            alert(parsed.msg);
+                            document.getElementById("loginDiv").style.display = "inline";
+                            document.getElementById("userInfo").style.display = "none";
+                            document.getElementById("status").innerText = "❌ XXX";
+                            return;
+                        case "userRename_alreadyUsed":
+                        case "userRename_success":
+                        case "privateChat_badRequest":
+                        case "privateChat_noSuchUser":
+                        case "privateChat_noMessageContent":
+                        case "connectTimeout":
+                            alert(parsed.msg);
+                            return;
+                        case "Broadcast":
+                            // 公聊内容输出
+                            const PublicMsgBox = document.getElementById("PublicMessages");
+                            PublicMsgBox .value += parsed.msg + "\n";
+                            msgBox.scrollTop = PublicMsgBox .scrollHeight;
+                            return;
+                        case "privateChat_content":
+                            // 私聊内容输出
+                            const PrivateMsgBox = document.getElementById("PrivateMessages");
+                            PrivateMsgBox.value += parsed.msg + "\n";
+                            PrivateMsgBox.scrollTop = PrivateMsgBox.scrollHeight;
+                    }
+                } catch (e) {
+                    // 并不预期获得非 JSON 格式的响应
+                    return;
+                }
+            };
+        }
+
+        function sendPublic() {
+            const msg = document.getElementById("chatInput").value;
+            if (msg.trim() !== "") {
+                socket.send(msg + "\n");
+                document.getElementById("chatInput").value = "";
+            }
+        }
+
+        function requestUsers() {
+            socket.send("who\n");
+        }
+
+        setInterval(() => {
+            if (connected) {
+                requestUsers();
+            }
+        }, 1000);
+
+        function sendPrivate() {
+            const target = document.getElementById("targetUser").value;
+            const msg = document.getElementById("privateMsg").value;
+            if (target && msg.trim() !== "") {
+                socket.send("to|" + target + "|" + msg+ "\n");
+                document.getElementById("privateMsg").value = "";
+            }
+        }
+    </script>
+
+    <style>
+        body {
+            background-color: #f3f4f6;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            font-family: sans-serif;
+        }
+
+        .chat-container {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+            padding: 24px;
+            width: 90%;
+            max-width: 1500px;
+            min-height: 80vh;
+        }
+
+        textarea {
+            resize: none;
+        }
+
+        h1 {
+            text-align: center;
+        }
+
+        /* ✅ 主体三列布局：左-中-右 */
+        .main-grid {
+            display: grid;
+            grid-template-columns: 2fr 0.1fr 1.2fr; /* 左大右小，中间空隙 */
+            gap: 20px;
+        }
+
+        /* ✅ 右侧再分上下两块 */
+        .right-section {
+            display: flex;
+            flex-direction: column;
+            gap: 20px;
+        }
+
+        /* ✅ 在线用户列表样式 */
+        #userList {
+            border: 1px solid #ddd;
+            border-radius: 8px;
+            padding: 10px;
+            height: 250px;
+            overflow-y: auto;
+            background: #fafafa;
+        }
+
+        .user-item {
+            padding: 4px 8px;
+            border-bottom: 1px solid #eee;
+        }
+
+        .user-item:last-child {
+            border-bottom: none;
+        }
+    </style>
+</head>
+<body>
+<div class="chat-container">
+    <h1 class="text-2xl font-bold mb-2">💬 在线聊天室</h1>
+
+    <div style="display: flex; justify-content: center; align-items: center; gap: 10px; margin-bottom: 10px;">
+        <div id="loginDiv" style="text-align:center;">
+            <input type="text" id="username" placeholder="请输入用户名">
+            <button onclick="connect()">连接</button>
+        </div>
+
+        <div id="userInfo" style="display:none; text-align:center;">
+            当前用户：<span id="displayUsername"></span>
+        </div>
+    </div>
+
+    <div style="text-align:center;">
+        <span id="status" class="ml-2 text-gray-700">未连接</span>
+    </div>
+
+    <hr class="my-3"/>
+
+    <div class="main-grid">
+        <!-- 🌍 公聊区 -->
+        <div>
+            <h2 class="font-semibold">🌍 公聊模式</h2>
+            <textarea id="PublicMessages" rows="18" readonly class="w-full border p-2" style="width:100%;"></textarea>
+            <textarea id="chatInput" rows="4" placeholder="输入聊天内容..." class="border w-full p-1" style="width:100%;"></textarea>
+            <button onclick="sendPublic()" class="bg-green-500 text-white px-3 py-1 mt-1 rounded">发送</button>
+        </div>
+
+        <!-- 中间留白 -->
+        <div></div>
+
+        <!-- 👥 右侧部分 -->
+        <div class="right-section">
+            <!-- 在线用户列表 -->
+            <div>
+                <h2 class="font-semibold">🟢 在线用户</h2>
+                <div id="userList">
+                    <!-- 用户列表将在这里显示 -->
+                    <div class="user-item">进入聊天室以查看在线用户</div>
+                </div>
+            </div>
+
+            <!-- 私聊模式 -->
+            <div>
+                <h2 class="font-semibold">👤 私聊模式</h2>
+                <textarea id="PrivateMessages" rows="12" readonly class="w-full border p-2" style="width:100%;"></textarea>
+                <input id="targetUser" placeholder="对方用户名" class="border w-full p-1 mb-1" style="width:100%;"/>
+                <textarea id="privateMsg" rows="4" placeholder="输入聊天内容..." class="border w-full p-1" style="width:100%;"></textarea>
+                <button onclick="sendPrivate()" class="bg-purple-500 text-white px-3 py-1 mt-1 rounded">发送私聊</button>
+            </div>
+        </div>
+    </div>
+</div>
+</body>
+</html>
