@@ -21,7 +21,7 @@ func NewClient(serverIp string, serverPort int) *Client {
 	client := &Client{
 		ServerIp:   serverIp,
 		ServerPort: serverPort,
-		Mode:       -15,
+		Mode:       -1,
 	}
 
 	// 连接 Server, 如果连接失败返回 nil Client
